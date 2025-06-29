@@ -45,7 +45,7 @@ pub mod unify_v2 {
 
     use crate::term::Term;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ConstraintDescription {
         typename: String,
         terms: Vec<Term>,
