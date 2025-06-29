@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 pub type Real = i32;
 pub type Subst = HashMap<Term, Real>;
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub enum Term {
     Var(&'static str), // something like "t1" or "t2" or something.
     Val(Real),         // stand in for our Shape
@@ -20,3 +20,22 @@ impl From<Real> for Term {
         Term::Val(value)
     }
 }
+
+impl Display for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Term::Var(v) => write!(f, "{v}",),
+            Term::Val(r) => write!(f, "{r}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Term::Var(v) => write!(f, "Variable({})", v),
+            Term::Val(r) => write!(f, "Real({})", r),
+        }
+    }
+}
+
