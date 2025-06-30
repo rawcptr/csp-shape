@@ -18,12 +18,13 @@ pub trait Constraint {
 pub struct Constraints(Vec<Box<dyn Constraint>>);
 
 impl Constraints {
+    const MAX_STEPS: usize = 255;
     pub fn new(constraints: Vec<Box<dyn Constraint>>) -> Constraints {
         Self(constraints)
     }
 
     pub fn solve(&self, subst: &mut Subst) {
-        for _ in 0..100 {
+        for _ in 0..Self::MAX_STEPS {
             let mut made_progress = false;
 
             for constraint in &self.0 {
@@ -43,7 +44,7 @@ impl Constraints {
                 break;
             }
         }
-        panic!("recursion hit");
+        panic!("constraints cannot be satisfied, complexity budged exceeded");
     }
 }
 
