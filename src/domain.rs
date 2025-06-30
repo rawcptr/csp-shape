@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::BTreeSet};
+use std::{cmp::Ordering, collections::BTreeSet, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub enum Domain {
@@ -10,7 +10,7 @@ pub enum Domain {
 
 impl Domain {
     pub fn intersect(&self, other: &Self) -> Self {
-        use Domain::*;
+        use Domain::{Bottom, Range, Set, Top};
         match (self, other) {
             (Top, x) | (x, Top) => x.clone(),
             (Set(s1), Set(s2)) => {
@@ -49,6 +49,7 @@ impl Domain {
             _ => None,
         }
     }
+
     pub fn contains(&self, val: u32) -> bool {
         match self {
             Domain::Range { min, max } => (min..=max).contains(&&val),
@@ -140,6 +141,25 @@ impl PartialOrd for Domain {
                 (Some(sa), Some(sb)) => set_cmp(&sa, &sb),
                 _ => None,
             },
+        }
+    }
+}
+
+impl Display for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Domain::Range { min, max } => write!(f, "{{{min} .. {max}}}"),
+            Domain::Set(btree_set) => write!(
+                f,
+                "{}",
+                btree_set
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            Domain::Top => write!(f, "{{..♾️}}"),
+            Domain::Bottom => write!(f, "∅"),
         }
     }
 }
