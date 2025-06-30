@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::constraint::unify_v2::ConstraintDescription;
+use crate::constraint::ConstraintDescription;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Progress {
