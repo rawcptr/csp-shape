@@ -1,105 +1,10 @@
-use std::collections::hash_map::Entry;
+use std::borrow::Cow;
 
-use crate::{
-    constraint::Constraint,
-    term::{Real, Subst, Term},
-};
+use crate::error::UnifyError;
 
-pub mod constraint;
 pub mod domain;
 pub mod error;
-pub mod ops;
 pub mod term;
 
-pub struct BinaryOpConstraint {
-    op: &'static str, // for debugging
-    a: Term,
-    b: Term,
-    c: Term,
-
-    e1: fn(Real, Real) -> Real, // a op b = c
-    e2: fn(Real, Real) -> Real, // c op a = b
-    e3: fn(Real, Real) -> Real, // b op a = c
-}
-
-impl BinaryOpConstraint {
-    pub fn sum(a: Term, b: Term, c: Term) -> Box<Self> {
-        Box::new(Self {
-            a,
-            b,
-            c,
-            e1: |x, y| x + y, // a + b = c
-            e2: |y, z| z - y, // c - b = a
-            e3: |x, z| z - x, // c - a = b
-            op: "+",
-        })
-    }
-
-    pub fn name(&self) -> &str {
-        self.op
-    }
-
-    pub fn product(a: Term, b: Term, c: Term) -> Box<Self> {
-        Box::new(Self {
-            a,
-            b,
-            c,
-            e1: |x, y| x * y, // a * b = c
-            e2: |y, z| z / y, // c / b = a
-            e3: |x, z| z / x, // c / a = b
-            op: "×",
-        })
-    }
-}
-
-impl Constraint for BinaryOpConstraint {
-    fn hold(&self, subst: &Subst) -> bool {
-        match (subst.get(&self.a), subst.get(&self.b), subst.get(&self.c)) {
-            (Some(a), Some(b), Some(c)) => {
-                eprintln!("holding? {a} {} {b} = {c}", &self.op);
-                (self.e1)(*a, *b) == *c
-            }
-            (a, b, c) => {
-                eprintln!("holding? {a:?} {} {b:?} = {c:?}", &self.op);
-                true
-            }
-        }
-    }
-
-    fn make_progress(&self, subst: &mut Subst) -> bool {
-        // if a, b known, find c
-        // if a, c known, find b
-        // if b, c known, find a
-        if let (Some(&a), Some(&b)) = (subst.get(&self.a), subst.get(&self.b)) {
-            if let Entry::Vacant(e) = subst.entry(self.c.clone()) {
-                e.insert((self.e1)(a, b));
-                eprintln!(
-                    "made progress: {:?} {} {:?} = {:?}",
-                    &self.a, &self.op, &self.b, &self.c
-                );
-                return true;
-            }
-        }
-        if let (Some(&c), Some(&b)) = (subst.get(&self.c), subst.get(&self.b)) {
-            if let Entry::Vacant(e) = subst.entry(self.a.clone()) {
-                e.insert((self.e2)(c, b));
-                eprintln!(
-                    "made progress: {:?} {} {:?} = {:?}",
-                    &self.c, &self.op, &self.b, &self.a
-                );
-                return true;
-            }
-        }
-        if let (Some(&c), Some(&a)) = (subst.get(&self.c), subst.get(&self.a)) {
-            if let Entry::Vacant(e) = subst.entry(self.b.clone()) {
-                e.insert((self.e3)(c, a));
-                eprintln!(
-                    "made progress: {:?} {} {:?} = {:?}",
-                    &self.c, &self.op, &self.a, &self.b
-                );
-                return true;
-            }
-        }
-        false
-    }
-}
+pub(crate) type CowStr = Cow<'static, str>;
+pub type Result<T> = std::result::Result<T, UnifyError>;

@@ -1,0 +1,12 @@
+=== Test 5: Many domains ===
+constraint failed: Sum
+trace:
+`#6 + #7 + #8 + #9 + #10 + #11 == 100`
+ │    │    │    │    │             ╰─ 11 (named: v5) ∈ [50..=60]
+ │    │    │    │             ╰─ 10 (named: v4) ∈ [40..=50]
+ │    │    │             ╰─ 9 (named: v3) ∈ [30..=40]
+ │    │             ╰─ 8 (named: v2) ∈ [20..=30]
+ │             ╰─ 7 (named: v1) ∈ [10..=20]
+         ╰─ 6 (named: v0) ∈ [0..=10]
+
+reason: many domains test

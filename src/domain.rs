@@ -1,174 +1,129 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt::Display};
+use std::{collections::BTreeSet, sync::Arc};
 
-#[derive(Debug, Clone)]
+use crate::term::Val;
+
+#[derive(Clone)]
 pub enum Domain {
-    Range { min: u32, max: u32 },
-    Set(BTreeSet<u32>),
+    Single(Val),
+    Range { min: Val, max: Val },
+    Set(Arc<BTreeSet<Val>>),
     Top,
     Bottom,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Cardinality {
+    Finite(usize),
+    Infinite,
+}
+
+impl From<Cardinality> for Option<usize> {
+    fn from(value: Cardinality) -> Self {
+        match value {
+            Cardinality::Finite(v) => Some(v),
+            Cardinality::Infinite => None,
+        }
+    }
+}
+
 impl Domain {
-    pub fn intersect(&self, other: &Self) -> Self {
-        use Domain::{Bottom, Range, Set, Top};
+    pub fn refine(&self, other: &Self) -> Self {
+        use Domain::*;
         match (self, other) {
-            (Top, x) | (x, Top) => x.clone(),
-            (Set(s1), Set(s2)) => {
-                let mut intersect = s1.intersection(s2).into_iter().peekable();
-                if intersect.peek().is_none() {
-                    return Bottom;
-                }
-                Set(BTreeSet::from_iter(intersect.cloned()))
+            (x, Top) | (Top, x) => x.clone(),
+            (_, Bottom) | (Bottom, _) => Bottom,
+            (Set(set1), Set(set2)) => set_from(set1.intersection(set2).cloned().peekable()),
+            (Single(x), Single(y)) if x == y => Self::Single(*x),
+            (Single(s), Range { min, max }) | (Range { min, max }, Single(s))
+                if s >= min && s <= max =>
+            {
+                Self::Single(*s)
             }
-
-            (Range { min: s1, max: e1 }, Range { min: s2, max: e2 }) => {
-                let min = *s1.min(s2);
-                let max = *e1.max(e2);
-                if max > min {
-                    return Range { min, max };
-                }
-                Bottom
+            (Single(x), Set(btree_set)) | (Set(btree_set), Single(x)) if btree_set.contains(x) => {
+                Self::Single(*x)
             }
-
-            (Range { min: s, max: e }, Set(set)) | (Set(set), Range { min: s, max: e }) => {
-                let i: BTreeSet<_> = set.range(s..=e).cloned().collect();
-                if i.is_empty() {
-                    Domain::Bottom
-                } else {
-                    Domain::Set(i)
+            (Range { min: mn1, max: mx1 }, Range { min: mn2, max: mx2 }) => {
+                let min = *mn1.max(mn2);
+                let max = *mx1.min(mx2);
+                match min.cmp(&max) {
+                    std::cmp::Ordering::Less => Range { min, max },
+                    std::cmp::Ordering::Equal => Single(min),
+                    std::cmp::Ordering::Greater => Bottom,
                 }
             }
-            (Bottom, _) | (_, Bottom) => Bottom,
-        }
-    }
-
-    pub fn is_singleton(&self) -> Option<u32> {
-        match self {
-            Domain::Range { min, max } if min == max => Some(*min),
-            Domain::Set(s) if s.len() == 1 => s.iter().cloned().next(),
-            _ => None,
-        }
-    }
-
-    pub fn contains(&self, val: u32) -> bool {
-        match self {
-            Domain::Range { min, max } => (min..=max).contains(&&val),
-            Domain::Set(s) => s.contains(&val),
-            Domain::Top => true,
-            Domain::Bottom => false,
-        }
-    }
-
-    pub fn min(&self) -> Option<u32> {
-        match self {
-            Domain::Range { min, .. } => Some(*min),
-            Domain::Set(s) => s.iter().next().copied(),
-            _ => None,
-        }
-    }
-
-    pub fn max(&self) -> Option<u32> {
-        match self {
-            Domain::Range { max, .. } => Some(*max),
-            Domain::Set(s) => s.iter().next_back().copied(),
-            _ => None,
-        }
-    }
-    pub fn to_set(&self) -> Option<BTreeSet<u32>> {
-        match self {
-            Domain::Set(s) => Some(s.clone()),
-            Domain::Range { min, max } if max - min <= 256 => Some((*min..=*max).collect()),
-            Domain::Bottom => Some(BTreeSet::new()),
-            _ => None,
-        }
-    }
-
-    pub fn new_range(min: u32, max: u32) -> Self {
-        Self::Range { min, max }
-    }
-}
-
-fn range_cmp(a_min: u32, a_max: u32, b_min: u32, b_max: u32) -> Option<Ordering> {
-    if a_min == b_min && a_max == b_max {
-        Some(Ordering::Equal)
-    } else if a_min >= b_min && a_max <= b_max {
-        Some(Ordering::Less)
-    } else if a_min <= b_min && a_max >= b_max {
-        Some(Ordering::Greater)
-    } else {
-        None
-    }
-}
-
-fn set_cmp(a: &BTreeSet<u32>, b: &BTreeSet<u32>) -> Option<Ordering> {
-    if a == b {
-        Some(Ordering::Equal)
-    } else if a.is_subset(b) {
-        Some(Ordering::Less)
-    } else if a.is_superset(b) {
-        Some(Ordering::Greater)
-    } else {
-        None
-    }
-}
-
-impl PartialEq for Domain {
-    fn eq(&self, other: &Self) -> bool {
-        self.partial_cmp(other) == Some(Ordering::Equal)
-    }
-}
-
-impl Eq for Domain {}
-
-impl PartialOrd for Domain {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use Domain::{Bottom, Range, Set, Top};
-
-        match (self, other) {
-            (Bottom, Bottom) | (Top, Top) => Some(Ordering::Equal),
-            (Bottom, _) => Some(Ordering::Less),
-            (_, Bottom) => Some(Ordering::Greater),
-            (_, Top) => Some(Ordering::Less),
-            (Top, _) => Some(Ordering::Greater),
-
-            (Range { min: a1, max: b1 }, Range { min: a2, max: b2 }) => {
-                range_cmp(*a1, *b1, *a2, *b2)
+            (Range { min, max }, Set(btree_set)) | (Set(btree_set), Range { min, max }) => {
+                set_from(btree_set.iter().filter(|x| x >= &min && x <= &max).cloned())
             }
-
-            (Set(s1), Set(s2)) => set_cmp(s1, s2),
-
-            (a, b) => match (a.to_set(), b.to_set()) {
-                (Some(sa), Some(sb)) => set_cmp(&sa, &sb),
-                _ => None,
-            },
+            (lhs, rhs) => panic!("unhandled domain refinement: {lhs:?} ∩ {rhs:?}"),
         }
+    }
+
+    pub fn contains(&self, val: Val) -> bool {
+        match self {
+            Domain::Single(s) if *s == val => true,
+            Domain::Range { min, max } if *min <= val && *max >= val => true,
+            Domain::Set(btree_set) => btree_set.contains(&val),
+            _ => false,
+        }
+    }
+
+    pub fn cardinality(&self) -> Cardinality {
+        use Cardinality::{Finite, Infinite};
+        match self {
+            Domain::Single(_) => Finite(1),
+            Domain::Range { min, max } if min > max => Finite(0),
+            Domain::Range { min, max } => Finite((max - min + 1).unsigned_abs() as usize),
+            Domain::Set(btree_set) => Finite(btree_set.len()),
+            Domain::Top => Infinite,
+            Domain::Bottom => Finite(0),
+        }
+    }
+
+    pub fn is_single(&self) -> bool {
+        matches!(self, Self::Single(_))
+    }
+
+    pub fn is_top(&self) -> bool {
+        matches!(self, Self::Top)
+    }
+
+    pub fn is_bottom(&self) -> bool {
+        matches!(self, Self::Bottom)
     }
 }
 
-impl Display for Domain {
+fn set_from<I: IntoIterator<Item = Val>>(iter: I) -> Domain {
+    let set: BTreeSet<_> = iter.into_iter().collect();
+    match set.len() {
+        0 => Domain::Bottom,
+        1 => Domain::Single(set.iter().next().cloned().unwrap()),
+        _ => Domain::Set(Arc::new(set)),
+    }
+}
+
+impl std::fmt::Debug for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Domain::Range { min, max } => write!(f, "{{{min} .. {max}}}"),
-            Domain::Set(btree_set) => write!(
-                f,
-                "{}",
-                btree_set
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ),
-            Domain::Top => write!(f, "{{..♾️}}"),
+            Domain::Single(v) => write!(f, "{v}"),
+            Domain::Range { min, max } => write!(f, "[{}..={}]", min, max),
+            Domain::Set(btree_set) => {
+                write!(
+                    f,
+                    "{{{}",
+                    btree_set
+                        .iter()
+                        .take(5)
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+                if btree_set.len() > 5 {
+                    write!(f, ", ... ({} total)", btree_set.len())?;
+                }
+                write!(f, "}}")
+            }
+            Domain::Top => write!(f, "ᴛ"),
             Domain::Bottom => write!(f, "∅"),
         }
-    }
-}
-
-pub mod macros {
-    #[macro_export]
-    macro_rules! two_real {
-        ($a:expr,$b:expr) => {
-            ($a.is_singleton(), $b.is_singleton())
-        };
     }
 }

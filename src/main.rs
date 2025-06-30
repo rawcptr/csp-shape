@@ -1,24 +1,40 @@
+#[allow(unused)]
 use csp_shape::{
-    BinaryOpConstraint, EqualityConstraint, GreaterThanConstraint, LessThanConstraint,
-    constraint::Constraints, term::Subst,
+    constraint_err, csp_bail,
+    domain::Domain,
+    error::{TraceFrame, UnifyError},
+    fresh_var,
+    term::VarGen,
 };
 
 fn main() {
-    let mut subst = Subst::new();
+    let mut var_gen = VarGen::new();
 
-    let constraints: Constraints = Constraints::new(vec![
-        // EqualityConstraint::boxed("a".into(), 10.into()),
-        // EqualityConstraint::boxed("e".into(), 14.into()),
-        // BinaryOpConstraint::sum("a".into(), "b".into(), "c".into()),
-        // LessThanConstraint::boxed("d".into(), "a".into()),
-        // // GreaterThanConstraint::boxed("b".into(), "a".into()), // should fail
-        // EqualityConstraint::boxed("d".into(), 4.into()),
-        // EqualityConstraint::boxed("b".into(), 6.into()),
-        // BinaryOpConstraint::product("c".into(), "d".into(), "e".into()),
+    let x = fresh_var!(var_gen, "x");
+    let y = fresh_var!(var_gen,);
 
-        // bing bang booom 
-        BinaryOpConstraint::sum("a".into(), "a".into(), 1.into()),
-    ]);
+    let trace = vec![
+        TraceFrame::Branched {
+            var: x.clone(),
+            value: 42,
+        },
+        TraceFrame::Constrained {
+            constraint: format!("{} == {}", x.no_name(), y.no_name()).into(),
+            domains: vec![
+                (x.clone(), Domain::Single(42)),
+                (y.clone(), Domain::Range { min: 40, max: 43 }),
+            ],
+        },
+        TraceFrame::Backtracked {
+            var: x,
+            failed_value: 42,
+        },
+    ];
+    if let Err(e) = wow(trace) {
+        println!("{e:?}");
+    }
+}
 
-    constraints.solve(&mut subst);
+fn wow(trace: Vec<TraceFrame>) -> Result<(), UnifyError> {
+    csp_bail!("AHHH GET ME OUTTA HERE!!!", trace, "im not solving dat shi");
 }

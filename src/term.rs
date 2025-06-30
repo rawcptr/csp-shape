@@ -1,110 +1,77 @@
-use crate::domain::Domain;
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
-pub type Real = i32;
+use crate::CowStr;
+pub type VarId = usize;
+pub type Val = i32;
 
-#[derive(Debug, Clone)]
-pub struct Subst {
-    map: HashMap<Term, Domain>,
+pub struct VarGen {
+    next_id: VarId,
 }
 
-impl Subst {
+impl VarGen {
     pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-        }
+        Self { next_id: 0 }
     }
-
-    pub fn get(&self, t: &Term) -> Option<&Domain> {
-        self.map.get(t)
-    }
-
-    pub fn is_bound(&self, t: &Term) -> bool {
-        self.map.contains_key(t)
-    }
-
-    pub fn bind(&mut self, t: Term, value: Domain) -> bool {
-        use std::collections::hash_map::Entry;
-        match self.map.entry(t) {
-            Entry::Vacant(e) => {
-                e.insert(value);
-                true
-            }
-            Entry::Occupied(_) => false,
-        }
-    }
-
-    pub fn propagate(&mut self, from: &Term, to: &Term) -> bool {
-        if let Some(v) = self.get(from) {
-            return self.bind(to.clone(), v.clone());
-        }
-        false
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Term, &Domain)> {
-        self.map.iter()
-    }
-
-    pub fn get_pair(&self, t1: &Term, t2: &Term) -> Option<(&Domain, &Domain)> {
-        self.get(t1).zip(self.get(t2))
-    }
-
-    pub fn pair_owned(&self, t1: &Term, t2: &Term) -> Option<(Domain, Domain)> {
-        self.get(t1).cloned().zip(self.get(t2).cloned())
-    }
-
-    pub fn refine(&mut self, t: Term, d: Domain) -> bool {
-        use std::collections::hash_map::Entry;
-        match self.map.entry(t) {
-            Entry::Vacant(e) => {
-                e.insert(d);
-                true
-            }
-            Entry::Occupied(mut e) => {
-                let new = e.get().intersect(&d);
-                if &new != e.get() {
-                    e.insert(new);
-                    true
-                } else {
-                    false
-                }
-            }
-        }
+    pub fn fresh(&mut self, name: Option<CowStr>) -> Term {
+        let id = self.next_id;
+        self.next_id += 1;
+        Term::Var { name, id }
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+impl Default for VarGen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Term {
-    Var(&'static str), // something like "t1" or "t2" or something.
-    Val(Real),         // stand in for our Shape
+    Val(Val),
+    Var { name: Option<CowStr>, id: usize },
 }
 
-impl From<&'static str> for Term {
-    fn from(value: &'static str) -> Self {
-        Term::Var(value)
-    }
-}
-
-impl From<Real> for Term {
-    fn from(value: Real) -> Self {
-        Term::Val(value)
+impl Term {
+    pub fn no_name(&self) -> String {
+        match self {
+            Term::Val(x) => x.to_string(),
+            Term::Var { id, .. } => format!("#{id}"),
+        }
     }
 }
 
 impl Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Term::Var(v) => write!(f, "{v}",),
-            Term::Val(r) => write!(f, "{r}"),
+            Term::Val(v) => write!(f, "{v}"),
+            Term::Var { name, id } => {
+                write!(
+                    f,
+                    "{id}{}",
+                    name.as_ref()
+                        .map(|f| format!(" (named: {f})"))
+                        .unwrap_or_default()
+                )
+            }
         }
     }
 }
 
-impl std::fmt::Debug for Term {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Term::Var(v) => write!(f, "Variable({})", v),
-            Term::Val(r) => write!(f, "Real({})", r),
-        }
+pub mod macros {
+    #[macro_export]
+    macro_rules! val {
+        ($n:expr) => {
+            Term::Val($n)
+        };
+    }
+
+    #[macro_export]
+    macro_rules! fresh_var {
+        ($var_gen:expr $(,)*) => {
+            $var_gen.fresh(None)
+        };
+        ($var_gen:expr, $name:expr $(,)*) => {
+            $var_gen.fresh(Some($name.into()))
+        };
     }
 }
